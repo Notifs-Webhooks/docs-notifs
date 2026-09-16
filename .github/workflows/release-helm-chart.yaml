@@ -27,6 +27,22 @@ jobs:
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
 
+      - name: Ensure gh-pages branch exists
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+        run: |
+          if ! git ls-remote --exit-code --heads origin gh-pages > /dev/null; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git checkout --orphan gh-pages
+            git rm -rf . > /dev/null 2>&1 || true
+            touch .nojekyll
+            git add .nojekyll
+            git commit -m "Initialize gh-pages branch"
+            git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+            git checkout "${GITHUB_REF_NAME}"
+          fi
+
       - name: Publish Helm charts
         uses: numerique-gouv/helm-gh-pages@2cf477ae49d7c70037ceb1685803f4f7bad9b981 # add-overwrite-option
         with:
