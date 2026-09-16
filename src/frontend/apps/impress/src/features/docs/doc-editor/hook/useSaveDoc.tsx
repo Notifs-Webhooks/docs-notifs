@@ -6,6 +6,7 @@ import {
   canKeepaliveContent,
   useDocContentUpdate,
 } from '@/docs/doc-management/api/useDocContentUpdate';
+import { useReportDocContribution } from '@/docs/doc-management/api/useReportDocContribution';
 import { useProviderStore } from '@/docs/doc-management/stores/useProviderStore';
 import { KEY_LIST_DOC_VERSIONS } from '@/docs/doc-versioning/api/useDocVersions';
 import { COMMENT_UPDATE_ORIGIN } from '@/features/docs/doc-comments/api/DocsThreadStore';
@@ -25,11 +26,17 @@ export const useSaveDoc = (docId: string, yDoc: Y.Doc) => {
 
   const { isOffline } = useIsOffline();
   const isSavingRef = useRef(false);
+
+  const contributionReportedRef = useRef(false);
+
+  const { mutate: reportDocContribution } = useReportDocContribution();
+
   const { mutate: updateDocContent } = useDocContentUpdate({
     listInvalidQueries: [KEY_LIST_DOC_VERSIONS],
     isOptimistic: isOffline, // Enable optimistic updates when offline, to update the cache immediately
     onSuccess: () => {
       isSavingRef.current = false;
+      contributionReportedRef.current = false;
       setIsLocalChange(false);
     },
     onError: () => {
@@ -78,6 +85,18 @@ export const useSaveDoc = (docId: string, yDoc: Y.Doc) => {
       if (transaction.origin === COMMENT_UPDATE_ORIGIN) {
         return;
       }
+      if (transaction.local && !contributionReportedRef.current) {
+        contributionReportedRef.current = true;
+
+        reportDocContribution(
+          { id: docId },
+          {
+            onError: () => {
+              contributionReportedRef.current = false;
+            },
+          },
+        );
+      }
 
       setIsLocalChange(transaction.local || isAIChange);
     };
@@ -87,7 +106,7 @@ export const useSaveDoc = (docId: string, yDoc: Y.Doc) => {
     return () => {
       yDoc.off('update', onUpdate);
     };
-  }, [yDoc]);
+  }, [docId, reportDocContribution, yDoc]);
 
   /**
    * `isSaving` tells whether a request was actually sent, `isKeptAlive`
