@@ -2078,6 +2078,37 @@ class DocumentViewSet(
 
         return drf.response.Response("authorized", headers=request.headers, status=200)
 
+    @drf.decorators.action(
+        detail=True,
+        methods=["post"],
+        url_path="contributions",
+    )
+    def contributions(self, request, *args, **kwargs):
+        """Record that the authenticated user contributed to this document."""
+        document = self.get_object()
+
+        contribution, created = models.DocumentContribution.objects.get_or_create(
+            document=document,
+            user=request.user,
+        )
+
+        if not created:
+            contribution.save()
+
+        response_status = (
+            status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        )
+
+        return drf_response.Response(
+            {
+                "document_id": str(contribution.document_id),
+                "user_id": str(contribution.user_id),
+                "created_at": contribution.created_at,
+                "updated_at": contribution.updated_at,
+            },
+            status=response_status,
+        )
+
     @drf.decorators.action(detail=True, methods=["patch"])
     def content(self, request, *args, **kwargs):
         """Update the raw Yjs content of a document stored in S3."""
