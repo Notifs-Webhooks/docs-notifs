@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from core import models
 from core.utils.notification_frequency import should_send_notification
+from core.utils.notification_message import format_notification_message
 from impress.celery_app import app
 
 
@@ -70,4 +71,21 @@ def process_document_version(
             configuration.last_sent_at,
             configuration.tchap_destination,
             should_send,
+        )
+
+        if not should_send:
+            continue
+
+        message = format_notification_message(
+            document.title,
+            contributor_names,
+            saved_at,
+        )
+
+        logger.info(
+            "Notification formatted "
+            "user_id=%s destination=%s message=%s",
+            configuration.user_id,
+            configuration.tchap_destination,
+            message,
         )
