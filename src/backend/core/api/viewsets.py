@@ -2095,9 +2095,7 @@ class DocumentViewSet(
         if not created:
             contribution.save()
 
-        response_status = (
-            status.HTTP_201_CREATED if created else status.HTTP_200_OK
-        )
+        response_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
 
         return drf_response.Response(
             {
@@ -2169,9 +2167,54 @@ class DocumentViewSet(
 
             # Update attachments with readable keys
             document.attachments = list(existing_attachments | readable_attachments)
-        document.content = content
+        contribution_cutoff = timezone.now()
+
+        contributor_ids = list(
+            models.DocumentContribution.objects.filter(
+                document=document,
+                updated_at__lte=contribution_cutoff,
+            ).values_list("user_id", flat=True)
+        )
+
         document.save()
+        saved_version = document.save_content(content)
+
         cache.delete(utils.get_content_metadata_cache_key(document.id))
+
+        if saved_version:
+            with transaction.atomic():
+                document_version = models.DocumentVersion.objects.create(
+                    document=document,
+                    version_id=saved_version["version_id"],
+                    etag=saved_version["etag"],
+                )
+
+                document_version.contributors.set(contributor_ids)
+
+                models.DocumentContribution.objects.filter(
+                    document=document,
+                    updated_at__lte=contribution_cutoff,
+                ).delete()
+
+            if settings.COLLABORATION_API_URL:
+                try:
+                    CollaborationService().broadcast_document_version_boundary(
+                        document.id
+                    )
+                except requests.HTTPError:
+                    logger.warning(
+                        "Unable to broadcast version boundary for document %s",
+                        document.id,
+                        exc_info=True,
+                    )
+
+            logger.info(
+                "Document version saved: document_id=%s version_id=%s etag=%s contributors=%s",
+                document.id,
+                saved_version["version_id"],
+                saved_version["etag"],
+                contributor_ids,
+            )
 
         return drf_response.Response(status=status.HTTP_204_NO_CONTENT)
 

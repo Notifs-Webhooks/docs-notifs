@@ -22,7 +22,7 @@ export const useSaveDoc = (docId: string, yDoc: Y.Doc) => {
    * because it indicates that the content is fully synchronised
    * with the yjs server
    */
-  const { isSynced: isConnectedToCollabServer } = useProviderStore();
+  const { isSynced: isConnectedToCollabServer, provider } = useProviderStore();
 
   const { isOffline } = useIsOffline();
   const isSavingRef = useRef(false);
@@ -30,6 +30,30 @@ export const useSaveDoc = (docId: string, yDoc: Y.Doc) => {
   const contributionReportedRef = useRef(false);
 
   const { mutate: reportDocContribution } = useReportDocContribution();
+
+  useEffect(() => {
+    if (!provider) {
+      return;
+    }
+
+    const onVersionBoundary = ({ payload }: { payload: string }) => {
+      try {
+        const message = JSON.parse(payload) as { type?: string };
+
+        if (message.type === 'document-version-boundary') {
+          contributionReportedRef.current = false;
+        }
+      } catch {
+        // Ignore stateless messages owned by other features.
+      }
+    };
+
+    provider.on('stateless', onVersionBoundary);
+
+    return () => {
+      provider.off('stateless', onVersionBoundary);
+    };
+  }, [provider]);
 
   const { mutate: updateDocContent } = useDocContentUpdate({
     listInvalidQueries: [KEY_LIST_DOC_VERSIONS],

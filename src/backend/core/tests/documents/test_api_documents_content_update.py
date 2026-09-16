@@ -188,6 +188,44 @@ def test_api_documents_content_update_replaces_existing():
     assert get_s3_content(document) == new_content
 
 
+@responses.activate
+def test_content_update_assigns_pending_contributors_to_stored_version(settings):
+    """A stored version receives every contributor pending at save time."""
+    patch_user = factories.UserFactory()
+    other_contributor = factories.UserFactory()
+    document = factories.DocumentFactory(link_reach="restricted")
+    factories.UserDocumentAccessFactory(
+        document=document, user=patch_user, role="editor"
+    )
+    models.DocumentContribution.objects.create(document=document, user=patch_user)
+    models.DocumentContribution.objects.create(
+        document=document, user=other_contributor
+    )
+
+    settings.COLLABORATION_API_URL = "http://example.com/"
+    settings.COLLABORATION_SERVER_SECRET = "secret-token"
+    boundary_url = (
+        f"{settings.COLLABORATION_API_URL}document-version-boundary/?room={document.id}"
+    )
+    boundary_response = responses.post(boundary_url, json={}, status=200)
+
+    client = APIClient()
+    client.force_login(patch_user)
+    response = client.patch(
+        f"/api/v1.0/documents/{document.id!s}/content/",
+        {"content": get_sample_ydoc(), "websocket": True},
+    )
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    stored_version = models.DocumentVersion.objects.get(document=document)
+    assert set(stored_version.contributors.values_list("id", flat=True)) == {
+        patch_user.id,
+        other_contributor.id,
+    }
+    assert not models.DocumentContribution.objects.filter(document=document).exists()
+    assert boundary_response.call_count == 1
+
+
 @pytest.mark.parametrize("role", ["editor", "administrator"])
 def test_api_documents_content_update_deleted_document_for_non_owners(role):
     """Updating content on a soft-deleted document returns 404 for non-owners.

@@ -94,6 +94,23 @@ def test_init_with_api_url(settings):
 
 
 @responses.activate
+def test_broadcast_document_version_boundary(settings):
+    """The collaboration server is told when a document version is saved."""
+    settings.COLLABORATION_API_URL = "http://example.com/"
+    settings.COLLABORATION_SERVER_SECRET = "secret-token"
+    room = "room1"
+    endpoint_url = "http://example.com/document-version-boundary/?room=" + room
+    responses.add(responses.POST, endpoint_url, json={}, status=200)
+
+    CollaborationService().broadcast_document_version_boundary(room)
+
+    assert len(responses.calls) == 1
+    request = responses.calls[0].request
+    assert request.url == endpoint_url
+    assert request.headers.get("Authorization") == "secret-token"
+
+
+@responses.activate
 def test_reset_connection_with_user_id(settings):
     """Test _reset_connection with a provided user_id."""
     settings.COLLABORATION_API_URL = "http://example.com/"

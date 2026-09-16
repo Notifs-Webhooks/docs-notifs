@@ -17,7 +17,6 @@ from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex
 from django.contrib.sites.models import Site
 from django.core.cache import cache
-from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.mail import send_mail
 from django.db import models, transaction
@@ -1040,9 +1039,25 @@ class Document(MP_Node, BaseModel):
                 response["ETag"].strip('"') != hashlib.md5(bytes_content).hexdigest()  # noqa: S324
             )
 
-        if has_changed:
-            content_file = ContentFile(bytes_content)
-            default_storage.save(file_key, content_file)
+        if not has_changed:
+            return None
+
+        object_parameters = default_storage.get_object_parameters(file_key)
+        object_parameters.setdefault(
+            "ContentType", default_storage.default_content_type
+        )
+
+        response = default_storage.connection.meta.client.put_object(
+            Bucket=default_storage.bucket_name,
+            Key=file_key,
+            Body=bytes_content,
+            **object_parameters,
+        )
+
+        return {
+            "version_id": response["VersionId"],
+            "etag": response["ETag"].strip('"'),
+        }
 
     def is_leaf(self):
         """
@@ -1576,6 +1591,36 @@ class Document(MP_Node, BaseModel):
                 numchild=models.F("numchild") + 1
             )
 
+
+class DocumentVersion(BaseModel):
+    """Store information about a version created in object storage."""
+
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name="stored_versions",
+    )
+    version_id = models.CharField(max_length=255)
+    etag = models.CharField(max_length=255)
+    contributors = models.ManyToManyField(
+        User,
+        related_name="contributed_document_versions",
+        blank=True,
+    )
+
+    class Meta:
+        db_table = "impress_document_version"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["document", "version_id"],
+                name="unique_document_storage_version",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.document!s} — version {self.version_id}"
+
+
 class DocumentContribution(BaseModel):
     """Record that a user has contributed to a document."""
 
@@ -1601,6 +1646,7 @@ class DocumentContribution(BaseModel):
 
     def __str__(self):
         return f"{self.user!s} contributed to {self.document!s}"
+
 
 class LinkTrace(BaseModel):
     """

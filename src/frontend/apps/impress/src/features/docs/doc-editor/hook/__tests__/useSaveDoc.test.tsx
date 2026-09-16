@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
+import { useProviderStore } from '@/docs/doc-management/stores/useProviderStore';
 import { AppWrapper } from '@/tests/utils';
 
 import { useSaveDoc } from '../useSaveDoc';
@@ -39,6 +40,7 @@ describe('useSaveDoc', () => {
   });
 
   afterEach(() => {
+    useProviderStore.setState({ provider: undefined });
     vi.restoreAllMocks();
   });
 
@@ -131,6 +133,56 @@ describe('useSaveDoc', () => {
     expect(fetchMock.callHistory.calls().length).toBe(0);
 
     vi.useRealTimers();
+  });
+
+  it('reports a contribution again after a document version boundary', async () => {
+    const yDoc = new Y.Doc();
+    const docId = self.crypto.randomUUID();
+    const contributionUrl = `http://test.jest/api/v1.0/documents/${docId}/contributions/`;
+    const provider = {
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+
+    useProviderStore.setState({ provider: provider as never });
+    fetchMock.post(contributionUrl, { status: 201 });
+
+    renderHook(() => useSaveDoc(docId, yDoc), {
+      wrapper: AppWrapper,
+    });
+
+    act(() => {
+      yDoc.getMap('test').set('first', 'change');
+    });
+
+    await waitFor(() => {
+      expect(
+        fetchMock.callHistory
+          .calls()
+          .filter((call) => call.url === contributionUrl),
+      ).toHaveLength(1);
+    });
+
+    const boundaryHandler = provider.on.mock.calls.find(
+      ([event]) => event === 'stateless',
+    )?.[1] as ((data: { payload: string }) => void) | undefined;
+
+    expect(boundaryHandler).toBeDefined();
+
+    act(() => {
+      boundaryHandler?.({
+        payload: JSON.stringify({ type: 'document-version-boundary' }),
+      });
+      yDoc.getMap('test').set('second', 'change');
+    });
+
+    await waitFor(() => {
+      expect(
+        fetchMock.callHistory
+          .calls()
+          .filter((call) => call.url === contributionUrl),
+      ).toHaveLength(2);
+    });
   });
 
   const setupSavedDoc = async (yDoc: Y.Doc, docId: string) => {

@@ -7,6 +7,7 @@ import {
   collaborationResetConnectionsHandler,
   collaborationWSHandler,
   convertHandler,
+  documentVersionBoundaryHandler,
   getDocumentConnectionInfoHandler,
 } from '@/handlers';
 import { corsMiddleware, httpSecurity, wsSecurity } from '@/middlewares';
@@ -44,6 +45,12 @@ export const initApp = () => {
     routes.COLLABORATION_GET_CONNECTIONS,
     httpSecurity,
     getDocumentConnectionInfoHandler,
+  );
+
+  app.post(
+    routes.COLLABORATION_VERSION_BOUNDARY,
+    httpSecurity,
+    documentVersionBoundaryHandler,
   );
 
   /**
