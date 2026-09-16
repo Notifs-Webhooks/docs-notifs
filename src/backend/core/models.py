@@ -1576,6 +1576,31 @@ class Document(MP_Node, BaseModel):
                 numchild=models.F("numchild") + 1
             )
 
+class DocumentContribution(BaseModel):
+    """Record that a user has contributed to a document."""
+
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name="contributions",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="document_contributions",
+    )
+
+    class Meta:
+        db_table = "impress_document_contribution"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["document", "user"],
+                name="unique_document_contribution_user",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user!s} contributed to {self.document!s}"
 
 class LinkTrace(BaseModel):
     """
