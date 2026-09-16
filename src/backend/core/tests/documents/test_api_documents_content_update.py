@@ -4,6 +4,7 @@ Tests for the PATCH /api/v1.0/documents/{id}/content/ endpoint.
 
 import base64
 from functools import cache
+from unittest import mock
 from uuid import uuid4
 
 from django.core.cache import cache as django_cache
@@ -224,6 +225,66 @@ def test_content_update_assigns_pending_contributors_to_stored_version(settings)
     }
     assert not models.DocumentContribution.objects.filter(document=document).exists()
     assert boundary_response.call_count == 1
+
+
+@responses.activate
+def test_content_update_queues_notification_after_commit(
+    settings,
+    django_capture_on_commit_callbacks,
+):
+    """A saved version queues its exact notification data after database commit."""
+    patch_user = factories.UserFactory()
+    other_contributor = factories.UserFactory()
+    document = factories.DocumentFactory(link_reach="restricted")
+    factories.UserDocumentAccessFactory(
+        document=document, user=patch_user, role="editor"
+    )
+    models.DocumentContribution.objects.create(document=document, user=patch_user)
+    models.DocumentContribution.objects.create(
+        document=document, user=other_contributor
+    )
+
+    settings.COLLABORATION_API_URL = "http://example.com/"
+    settings.COLLABORATION_SERVER_SECRET = "secret-token"
+    responses.post(
+        f"{settings.COLLABORATION_API_URL}"
+        f"document-version-boundary/?room={document.id}",
+        json={},
+        status=200,
+    )
+
+    client = APIClient()
+    client.force_login(patch_user)
+
+    with (
+        mock.patch(
+            "core.api.viewsets.process_document_version.delay"
+        ) as notification_delay,
+        django_capture_on_commit_callbacks(execute=True),
+    ):
+        response = client.patch(
+            f"/api/v1.0/documents/{document.id!s}/content/",
+            {"content": get_sample_ydoc(), "websocket": True},
+        )
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+
+    stored_version = models.DocumentVersion.objects.get(document=document)
+    notification_delay.assert_called_once()
+    (
+        queued_document_id,
+        queued_version_id,
+        queued_saved_at,
+        queued_contributor_ids,
+    ) = notification_delay.call_args.args
+
+    assert queued_document_id == str(document.id)
+    assert queued_version_id == stored_version.version_id
+    assert queued_saved_at == stored_version.created_at.isoformat()
+    assert set(queued_contributor_ids) == {
+        str(patch_user.id),
+        str(other_contributor.id),
+    }
 
 
 @pytest.mark.parametrize("role", ["editor", "administrator"])

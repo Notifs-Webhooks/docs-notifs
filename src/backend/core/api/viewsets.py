@@ -10,6 +10,7 @@ import logging
 import socket
 import uuid
 from collections import defaultdict
+from functools import partial
 from io import BytesIO
 from urllib.parse import unquote, urlencode, urlparse
 
@@ -70,6 +71,7 @@ from core.services.search_indexers import (
 )
 from core.tasks.access import reset_service_connections_in_cascade
 from core.tasks.mail import send_ask_for_access_mail
+from core.tasks.notifications import process_document_version
 from core.utils.analytics import PosthogEventName, posthog_capture
 from core.utils.dicts import lowercase_keys
 from core.utils.paths import filter_descendants
@@ -2195,6 +2197,16 @@ class DocumentViewSet(
                     document=document,
                     updated_at__lte=contribution_cutoff,
                 ).delete()
+
+            transaction.on_commit(
+                partial(
+                    process_document_version.delay,
+                    str(document.id),
+                    document_version.version_id,
+                    document_version.created_at.isoformat(),
+                    [str(contributor_id) for contributor_id in contributor_ids],
+                )
+            )
 
             if settings.COLLABORATION_API_URL:
                 try:
