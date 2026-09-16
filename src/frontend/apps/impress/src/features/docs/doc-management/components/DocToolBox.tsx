@@ -96,6 +96,14 @@ const ModalExport = dynamic(
   { ssr: false },
 );
 
+const ModalNotif = dynamic(
+  () =>
+    import('@/docs/doc-notify/components/DocNotifyModal').then((mod) => ({
+      default: mod.DocNotifyModal,
+    })),
+  { ssr: false },
+);
+
 interface DocToolBoxProps {
   doc: Doc;
   isCurrentDoc: boolean;
@@ -124,6 +132,7 @@ const DocToolBoxComponent = ({
   const [isModalHistoryOpen, setIsModalHistoryOpen] = useState(false);
   const [isModalLeaveOpen, setIsModalLeaveOpen] = useState(false);
   const [isModalMoveOpen, setIsModalMoveOpen] = useState(false);
+  const [isModalNotifyOpen, setIsModalNotifyOpen] = useState (false);
   const { onClick: onButtonClick, ...buttonPropsLeft } = buttonProps || {};
 
   const editor = useEditorStore((state) => state.editor);
@@ -332,11 +341,10 @@ const DocToolBoxComponent = ({
         description: 'Dropdown menu item to notify the user when changes are made',
       }),
       icon: <NotifyIcon width={18} height={18} aria-hidden="true" />,
-      // callback: () => {
-      //   setIsModalRemoveOpen(true);
-      // },
-      //  
-      // showSeparator: isCurrentDoc,
+      callback: () => {
+        setIsModalNotifyOpen(true);
+      },
+      showSeparator: isCurrentDoc,
       isHidden: !isTopParent || !authenticated,
     },
   ];
@@ -450,6 +458,15 @@ const DocToolBoxComponent = ({
           onAfterMove={() => treeContext?.setRoot(null)}
         />
       )}
+      {isModalNotifyOpen && (
+        <ModalNotif
+          onClose={() => {
+            setIsModalNotifyOpen(false);
+            restoreFocus();
+      }}
+    doc={doc}
+  />
+)}
     </>
   );
 };
