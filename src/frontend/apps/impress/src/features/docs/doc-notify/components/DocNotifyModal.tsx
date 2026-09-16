@@ -19,119 +19,44 @@ type Props = {
   onClose: () => void;
 };
 
-type NotificationKey = 'comments' | 'mentions' | 'updates' | 'shares';
-
-type NotificationOption = {
-  key: NotificationKey;
-  label: string;
-  description: string;
-};
-
 type TabKey = 'activation' | 'settings';
-const ToggleSwitch = ({
-  checked,
-  onChange,
-  ariaLabel,
-}: {
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  ariaLabel: string;
-}) => (
-  <button
-    type="button"
-    role="switch"
-    aria-checked={checked}
-    aria-label={ariaLabel}
-    onClick={() => onChange(!checked)}
-    style={{
-      width: '40px',
-      height: '22px',
-      borderRadius: '999px',
-      border: 'none',
-      cursor: 'pointer',
-      padding: '2px',
-      display: 'flex',
-      justifyContent: checked ? 'flex-end' : 'flex-start',
-      backgroundColor: checked ? 'var(--c--theme--colors--primary-500, #000091)' : '#ccc',
-      transition: 'background-color 0.15s ease',
-    }}
-  >
-    <span
-      style={{
-        width: '18px',
-        height: '18px',
-        borderRadius: '50%',
-        backgroundColor: '#fff',
-        display: 'block',
-      }}
-    />
-  </button>
-);
-
+type Frequency = 'realtime' | 'daily' | 'weekly';
+type Channel = 'email' | 'app' | 'both';
+  
 export const DocNotifyModal = ({ doc, onClose }: Props) => {
   const { t } = useTranslation();
   const { isLargeScreen } = useResponsiveStore();
   const [activeTab, setActiveTab] = useState<TabKey>('activation');
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [preferences, setPreferences] = useState<Record<NotificationKey, boolean>>({
-    comments: true,
-    mentions: true,
-    updates: false,
-    shares: true,
-  });
-  const notificationOptions: NotificationOption[] = [
-    {
-      key: 'comments',
-      label: t('Comments'),
-      description: t('Get notified when someone comments on this document.'),
-    },
-    {
-      key: 'mentions',
-      label: t('Mentions'),
-      description: t('Get notified when someone mentions you.'),
-    },
-    {
-      key: 'updates',
-      label: t('Document updates'),
-      description: t('Get notified when the document content changes.'),
-    },
-    {
-      key: 'shares',
-      label: t('Sharing'),
-      description: t('Get notified when access to this document changes.'),
-    },
-  ];
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+
+  const [frequency, setFrequency] = useState<Frequency>('daily');
+  const [channel, setChannel] = useState<Channel>('email');
+  const [notifyComments, setNotifyComments] = useState(true);
+  const [notifyEdits, setNotifyEdits] = useState(false);
+
   const tabs: { key: TabKey; label: string }[] = [
-    { key: 'activation', label: t('Activation') },
+    { key: 'activation', label: t('Notifications') },
     { key: 'settings', label: t('Settings') },
   ];
+
   const toggleNotifications = (enabled: boolean) => {
     setNotificationsEnabled(enabled);
     announce(
       enabled
-        ? t('Notifications enabled for this document.')
+        ? t('Enabled notifications for this document.')
         : t('Notifications disabled for this document.'),
       'polite',
     );
   };
-  const togglePreference = (key: NotificationKey, value: boolean) => {
-    setPreferences((prev) => ({ ...prev, [key]: value }));
-    announce(
-      t('{{label}} notifications {{state}}.', {
-        label: notificationOptions.find((opt) => opt.key === key)?.label,
-        state: value ? t('enabled') : t('disabled'),
-      }),
-      'polite',
-    );
-  };
+
   return (
     <Modal
       isOpen
       closeOnClickOutside
       data-testid="doc-notify-modal"
       data-doc-id={doc.id}
-      aria-label={t('Notification settings')}
-      size={isLargeScreen ? ModalSize.LARGE : ModalSize.FULL}
+      aria-label={t('Notifications settings for document {{docTitle}}', { docTitle: doc.title })}
+      size={isLargeScreen ? ModalSize.MEDIUM : ModalSize.FULL}
       aria-modal="true"
       onClose={onClose}
       title={
@@ -147,7 +72,7 @@ export const DocNotifyModal = ({ doc, onClose }: Props) => {
             {t('Notifications')}
           </Text>
           <ButtonCloseModal
-            aria-label={t('Close the notification settings modal')}
+            aria-label={t('Close the notification settings window')}
             onClick={onClose}
           />
         </Box>
@@ -163,7 +88,7 @@ export const DocNotifyModal = ({ doc, onClose }: Props) => {
             border-bottom: 1px solid var(--c--theme--colors--greyscale-200, #e5e5e5);
           `}
           role="tablist"
-          aria-label={t('Notification settings sections')}
+          aria-label={t('Notification settings tab')}
         >
           {tabs.map((tab) => (
             <button
@@ -189,7 +114,8 @@ export const DocNotifyModal = ({ doc, onClose }: Props) => {
             </button>
           ))}
         </Box>
-        <Box $padding={{ horizontal: 'base', vertical: 'base' }} $gap="1rem">
+
+        <Box $padding={{ horizontal: 'base', vertical: 'base' }} $gap="1.25rem">
           {activeTab === 'activation' && (
             <Box
               $direction="row"
@@ -197,52 +123,106 @@ export const DocNotifyModal = ({ doc, onClose }: Props) => {
               $justify="space-between"
               $padding={{ vertical: 'sm' }}
             >
-              <Box $gap="2px">
+              <Box $gap="4px">
                 <Text $weight="600" $size="sm">
-                  {t('Activate notifications')}
+                  {t('Enable notifications')}
                 </Text>
                 <Text $variation="secondary" $size="xs">
-                  {t('Receive alerts about activity on this document.')}
+                  {t('Recieve notifications for activity on this document.')}
                 </Text>
               </Box>
-              <ToggleSwitch
+              
+              <input
+                type="checkbox"
+                role="switch"
                 checked={notificationsEnabled}
-                onChange={toggleNotifications}
-                ariaLabel={t('Activate notifications for this document')}
+                onChange={(e) => toggleNotifications(e.target.checked)}
+                aria-label={t('Enabled notifications for this document')}
               />
             </Box>
           )}
+
           {activeTab === 'settings' && (
-            <Box $gap="0.75rem">
-              {!notificationsEnabled && (
+            <Box $gap="1.25rem">
+              {!notificationsEnabled ? (
                 <Text $variation="secondary" $size="sm">
-                  {t('Activate notifications in the first tab to configure them.')}
+                  {t('Notifications are currently disabled. Please enable them in the "Activation" tab to access settings.')}
                 </Text>
-              )}
-              {notificationOptions.map((option) => (
-                <Box
-                  key={option.key}
-                  $direction="row"
-                  $align="center"
-                  $justify="space-between"
-                >
-                  <Box $gap="2px" $maxWidth="80%">
-                    <Text $size="sm">{option.label}</Text>
-                    <Text $variation="secondary" $size="xs">
-                      {option.description}
+              ) : (
+                <>
+                  <Box $gap="0.5rem">
+                    <Text $weight="600" $size="xs" $transform="uppercase" $variation="secondary">
+                      {t('Notification content')}
                     </Text>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={notifyComments}
+                        onChange={(e) => setNotifyComments(e.target.checked)}
+                      />
+                      <Text $size="sm">{t('Comments and replies')}</Text>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={notifyEdits}
+                        onChange={(e) => setNotifyEdits(e.target.checked)}
+                      />
+                      <Text $size="sm">{t('Content modifications')}</Text>
+                    </label>
                   </Box>
-                  <ToggleSwitch
-                    checked={notificationsEnabled && preferences[option.key]}
-                    onChange={(value) => togglePreference(option.key, value)}
-                    ariaLabel={option.label}
-                  />
-                </Box>
-              ))}
+                  <Box $gap="0.35rem">
+                    <Text as="label" htmlFor="doc-notify-frequency" $size="sm" $weight="600">
+                      {t('Frequency')}
+                    </Text>
+                    <select
+                      id="doc-notify-frequency"
+                      value={frequency}
+                      onChange={(e) => setFrequency(e.target.value as Frequency)}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '4px',
+                        border: '1px solid var(--c--theme--colors--greyscale-300, #e5e5e5)',
+                        backgroundColor: '#fff',
+                        fontSize: '14px',
+                        width: '100%',
+                      }}
+                    >
+                      <option value="realtime">{t('Instantaneous')}</option>
+                      <option value="daily">{t('Daily summary')}</option>
+                      <option value="weekly">{t('Weekly summary')}</option>
+                    </select>
+                  </Box>
+                  <Box $gap="0.35rem">
+                    <Text as="label" htmlFor="doc-notify-channel" $size="sm" $weight="600">
+                      {t('Notification channel')}
+                    </Text>
+                    <select
+                      id="doc-notify-channel"
+                      value={channel}
+                      onChange={(e) => setChannel(e.target.value as Channel)}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '4px',
+                        border: '1px solid var(--c--theme--colors--greyscale-300, #e5e5e5)',
+                        backgroundColor: '#fff',
+                        fontSize: '14px',
+                        width: '100%',
+                      }}
+                    >
+                      <option value="email">{t('Mail only')}</option>
+                      <option value="app">{t('Tchap only')}</option>
+                      <option value="both">{t('E-mail and Tchap')}</option>
+                    </select>
+                  </Box>
+                </>
+              )}
             </Box>
           )}
+
           <HorizontalSeparator $margin={{ vertical: 'xs' }} />
-          <Box $direction="row" $justify="flex-end">
+          
+          <Box $direction="row" $justify="flex-end" $gap="0.5rem">
             <Button color="primary" onClick={onClose}>
               {t('Done')}
             </Button>
