@@ -2,7 +2,7 @@ import { Button, Modal, ModalSize } from '@gouvfr-lasuite/ui-components';
 import { announce } from '@react-aria/live-announcer';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { createGlobalStyle, css } from 'styled-components';
+import styled, { createGlobalStyle, css } from 'styled-components';
 
 import { Box, ButtonCloseModal, HorizontalSeparator, Text } from '@/components';
 import { Doc } from '@/docs/doc-management';
@@ -22,17 +22,172 @@ type Props = {
 type TabKey = 'activation' | 'settings';
 type Frequency = 'realtime' | 'daily' | 'weekly';
 type Channel = 'email' | 'app' | 'both';
-  
+
+const HiddenInput = styled.input`
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+`;
+
+const CheckboxVisual = styled.span<{ $checked: boolean }>`
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1.5px solid
+    ${({ $checked }) =>
+      $checked
+        ? 'var(--c--theme--colors--primary-500, #000091)'
+        : 'var(--c--theme--colors--greyscale-400, #929292)'};
+  background-color: ${({ $checked }) =>
+    $checked ? 'var(--c--theme--colors--primary-500, #000091)' : '#fff'};
+  display: inline-grid;
+  place-content: center;
+  flex-shrink: 0;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+`;
+
+const CheckIcon = styled.svg`
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+`;
+
+const CheckboxRowLabel = styled.label<{ $align?: 'center' | 'flex-start' }>`
+  display: flex;
+  align-items: ${({ $align }) => $align ?? 'center'};
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border-radius: 4px;
+  user-select: none;
+
+  &:hover {
+    background-color: var(--c--theme--colors--greyscale-050, #f6f6f6);
+  }
+
+  &:focus-within ${CheckboxVisual} {
+    outline: 2px solid var(--c--theme--colors--primary-500, #000091);
+    outline-offset: 2px;
+  }
+`;
+
+const CheckboxRow = ({
+  checked,
+  onChange,
+  align,
+  children,
+  ariaLabel,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  align?: 'center' | 'flex-start';
+  children: React.ReactNode;
+  ariaLabel?: string;
+}) => (
+  <CheckboxRowLabel $align={align}>
+    <HiddenInput
+      type="checkbox"
+      checked={checked}
+      onChange={(e) => onChange(e.target.checked)}
+      aria-label={ariaLabel}
+    />
+    <CheckboxVisual $checked={checked}>
+      {checked && (
+        <CheckIcon viewBox="0 0 12 12">
+          <polyline points="1.5 6.5 4.5 9.5 10.5 2.5" />
+        </CheckIcon>
+      )}
+    </CheckboxVisual>
+    {children}
+  </CheckboxRowLabel>
+);
+
+// Visuel du Switch / Interrupteur
+const SwitchLabel = styled.label`
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+`;
+
+const SwitchTrack = styled.span<{ $checked: boolean }>`
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background-color: ${({ $checked }) =>
+    $checked ? 'var(--c--theme--colors--primary-500, #000091)' : '#ccc'};
+  transition: background-color 0.15s ease;
+  flex-shrink: 0;
+  display: inline-block;
+
+  &:focus-within {
+    outline: 2px solid var(--c--theme--colors--primary-500, #000091);
+    outline-offset: 2px;
+  }
+`;
+
+const SwitchThumb = styled.span<{ $checked: boolean }>`
+  position: absolute;
+  top: 2px;
+  left: ${({ $checked }) => ($checked ? '20px' : '2px')};
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background-color: #fff;
+  transition: left 0.15s ease;
+`;
+
+const Switch = ({
+  checked,
+  onChange,
+  ariaLabel,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  ariaLabel: string;
+}) => (
+  <SwitchLabel>
+    <HiddenInput
+      type="checkbox"
+      role="switch"
+      checked={checked}
+      onChange={(e) => onChange(e.target.checked)}
+      aria-label={ariaLabel}
+    />
+    <SwitchTrack $checked={checked}>
+      <SwitchThumb $checked={checked} />
+    </SwitchTrack>
+  </SwitchLabel>
+);
+
 export const DocNotifyModal = ({ doc, onClose }: Props) => {
   const { t } = useTranslation();
   const { isLargeScreen } = useResponsiveStore();
   const [activeTab, setActiveTab] = useState<TabKey>('activation');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-
   const [frequency, setFrequency] = useState<Frequency>('daily');
   const [channel, setChannel] = useState<Channel>('email');
-  const [notifyComments, setNotifyComments] = useState(true);
-  const [notifyEdits, setNotifyEdits] = useState(false);
+  const [includeDocDetails, setIncludeDocDetails] = useState(true);
+  const [includeDateTime, setIncludeDateTime] = useState(true);
+  const [includeModificationNature, setIncludeModificationNature] = useState(true);
+  const [includeDocLink, setIncludeDocLink] = useState(true);
+  const [includeTchapTargets, setIncludeTchapTargets] = useState(true);
+  const [includeConfidentialityWarning, setIncludeConfidentialityWarning] = useState(false);
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'activation', label: t('Notifications') },
@@ -88,7 +243,7 @@ export const DocNotifyModal = ({ doc, onClose }: Props) => {
             border-bottom: 1px solid var(--c--theme--colors--greyscale-200, #e5e5e5);
           `}
           role="tablist"
-          aria-label={t('Notification settings tab')}
+          aria-label={t('Notification settings tabs')}
         >
           {tabs.map((tab) => (
             <button
@@ -114,7 +269,6 @@ export const DocNotifyModal = ({ doc, onClose }: Props) => {
             </button>
           ))}
         </Box>
-
         <Box $padding={{ horizontal: 'base', vertical: 'base' }} $gap="1.25rem">
           {activeTab === 'activation' && (
             <Box
@@ -131,45 +285,67 @@ export const DocNotifyModal = ({ doc, onClose }: Props) => {
                   {t('Recieve notifications for activity on this document.')}
                 </Text>
               </Box>
-              
-              <input
-                type="checkbox"
-                role="switch"
+              <Switch
                 checked={notificationsEnabled}
-                onChange={(e) => toggleNotifications(e.target.checked)}
-                aria-label={t('Enabled notifications for this document')}
+                onChange={toggleNotifications}
+                ariaLabel={t('Enabled notifications for this document')}
               />
             </Box>
           )}
-
           {activeTab === 'settings' && (
             <Box $gap="1.25rem">
               {!notificationsEnabled ? (
                 <Text $variation="secondary" $size="sm">
-                  {t('Notifications are currently disabled. Please enable them in the "Activation" tab to access settings.')}
+                  {t(
+                    'Notifications are currently disabled. Please enable them in the "Activation" tab to access settings.',
+                  )}
                 </Text>
               ) : (
                 <>
-                  <Box $gap="0.5rem">
+                  <Box $gap="0.25rem">
                     <Text $weight="600" $size="xs" $transform="uppercase" $variation="secondary">
                       {t('Notification content')}
                     </Text>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={notifyComments}
-                        onChange={(e) => setNotifyComments(e.target.checked)}
-                      />
-                      <Text $size="sm">{t('Comments and replies')}</Text>
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={notifyEdits}
-                        onChange={(e) => setNotifyEdits(e.target.checked)}
-                      />
-                      <Text $size="sm">{t('Content modifications')}</Text>
-                    </label>
+                    <CheckboxRow checked={includeDocDetails} onChange={setIncludeDocDetails}>
+                      <Text $size="sm">{t('ID and document name')}</Text>
+                    </CheckboxRow>
+                    <CheckboxRow checked={includeDateTime} onChange={setIncludeDateTime}>
+                      <Text $size="sm">{t('Date and time')}</Text>
+                    </CheckboxRow>
+                    <CheckboxRow
+                      checked={includeModificationNature}
+                      onChange={setIncludeModificationNature}
+                    >
+                      <Text $size="sm">{t('Nature of modification')}</Text>
+                    </CheckboxRow>
+                    <CheckboxRow checked={includeDocLink} onChange={setIncludeDocLink}>
+                      <Text $size="sm">{t('Link to document')}</Text>
+                    </CheckboxRow>
+                    <CheckboxRow
+                      checked={includeTchapTargets}
+                      onChange={setIncludeTchapTargets}
+                      align="flex-start"
+                    >
+                      <Box $gap="2px">
+                        <Text $size="sm">
+                          {t('Specific recipient Tchap contacts and/or channels')}
+                        </Text>
+                        <Text $variation="secondary" $size="xs">
+                          {t(
+                            '(TBC limited only to users with viewer permissions at minimum) - default = Tchap bot/notification channel',
+                          )}
+                        </Text>
+                      </Box>
+                    </CheckboxRow>
+                    <CheckboxRow
+                      checked={includeConfidentialityWarning}
+                      onChange={setIncludeConfidentialityWarning}
+                      align="flex-start"
+                    >
+                      <Text $size="sm">
+                        {t('For webhooks: specific warnings regarding confidentiality')}
+                      </Text>
+                    </CheckboxRow>
                   </Box>
                   <Box $gap="0.35rem">
                     <Text as="label" htmlFor="doc-notify-frequency" $size="sm" $weight="600">
@@ -219,9 +395,7 @@ export const DocNotifyModal = ({ doc, onClose }: Props) => {
               )}
             </Box>
           )}
-
           <HorizontalSeparator $margin={{ vertical: 'xs' }} />
-          
           <Box $direction="row" $justify="flex-end" $gap="0.5rem">
             <Button color="primary" onClick={onClose}>
               {t('Done')}
