@@ -34,6 +34,11 @@ def process_document_version(
         for user in contributors
     ]
 
+    configurations = models.NotificationSetting.objects.filter(
+        document=document,
+        enabled=True,
+    ).select_related("user")
+
     logger.info(
         "Processing document version "
         "document_id=%s title=%s version_id=%s saved_at=%s contributors=%s",
@@ -43,3 +48,13 @@ def process_document_version(
         saved_at,
         contributor_names,
     )
+
+    for configuration in configurations:
+        logger.info(
+            "Notification candidate "
+            "user_id=%s frequency=%s last_sent_at=%s destination=%s",
+            configuration.user_id,
+            configuration.frequency,
+            configuration.last_sent_at,
+            configuration.tchap_destination,
+        )
