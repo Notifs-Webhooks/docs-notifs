@@ -19,6 +19,7 @@ import { usePresenterStore } from '@/docs/doc-presenter/stores';
 import { useDetachDoc } from '@/docs/doc-tree/api/useDetach';
 import { useTreeContextOrNull } from '@/docs/doc-tree/utils';
 import { useAuth } from '@/features/auth';
+import NotifyIcon from '@/icons/bell.svg';
 import ContentCopyIcon from '@/icons/copy.svg';
 import DocMoveInIcon from '@/icons/doc-move-in.svg';
 import DocMoveOutIcon from '@/icons/doc-move-out.svg';
@@ -95,6 +96,14 @@ const ModalExport = dynamic(
   { ssr: false },
 );
 
+const DocNotifyModal = dynamic(
+  () =>
+    import('@/docs/doc-notify/components/DocNotifyModal').then((mod) => ({
+      default: mod.DocNotifyModal,
+    })),
+  { ssr: false },
+);
+
 interface DocToolBoxProps {
   doc: Doc;
   isCurrentDoc: boolean;
@@ -123,6 +132,7 @@ const DocToolBoxComponent = ({
   const [isModalHistoryOpen, setIsModalHistoryOpen] = useState(false);
   const [isModalLeaveOpen, setIsModalLeaveOpen] = useState(false);
   const [isModalMoveOpen, setIsModalMoveOpen] = useState(false);
+  const [isModalNotifyOpen, setIsModalNotifyOpen] = useState(false);
   const { onClick: onButtonClick, ...buttonPropsLeft } = buttonProps || {};
 
   const editor = useEditorStore((state) => state.editor);
@@ -288,6 +298,16 @@ const DocToolBoxComponent = ({
     },
     { type: 'separator' },
     {
+      label: t('Notify changes', {
+        description: 'Dropdown menu item to configure document notifications',
+      }),
+      icon: <NotifyIcon width={18} height={18} aria-hidden="true" />,
+      callback: () => {
+        setIsModalNotifyOpen(true);
+      },
+      isHidden: !isTopParent || !authenticated,
+    },
+    {
       label: t('History', {
         description: 'Dropdown menu item to view the document history',
       }),
@@ -435,6 +455,15 @@ const DocToolBoxComponent = ({
           }}
           isOpen={isModalMoveOpen}
           onAfterMove={() => treeContext?.setRoot(null)}
+        />
+      )}
+      {isModalNotifyOpen && (
+        <DocNotifyModal
+          doc={doc}
+          onClose={() => {
+            setIsModalNotifyOpen(false);
+            restoreFocus();
+          }}
         />
       )}
     </>
