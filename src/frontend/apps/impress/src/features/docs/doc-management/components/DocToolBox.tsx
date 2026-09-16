@@ -20,6 +20,7 @@ import { useDetachDoc } from '@/docs/doc-tree/api/useDetach';
 import { useTreeContextOrNull } from '@/docs/doc-tree/utils';
 import { useAuth } from '@/features/auth';
 import ContentCopyIcon from '@/icons/copy.svg';
+import NotifyIcon from '@/icons/bell.svg'
 import DocMoveInIcon from '@/icons/doc-move-in.svg';
 import DocMoveOutIcon from '@/icons/doc-move-out.svg';
 import DownloadIcon from '@/icons/download.svg';
@@ -325,6 +326,18 @@ const DocToolBoxComponent = ({
       },
       isHidden: !doc.abilities.destroy,
       showSeparator: isCurrentDoc,
+    },
+    {
+      label: t('Notify Changes', {
+        description: 'Dropdown menu item to notify the user when changes are made',
+      }),
+      icon: <NotifyIcon width={18} height={18} aria-hidden="true" />,
+      // callback: () => {
+      //   setIsModalRemoveOpen(true);
+      // },
+      //  
+      // showSeparator: isCurrentDoc,
+      isHidden: !isTopParent || !authenticated,
     },
   ];
 
