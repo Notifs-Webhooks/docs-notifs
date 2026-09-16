@@ -2,7 +2,10 @@
 
 import logging
 
+from django.utils import timezone
+
 from core import models
+from core.utils.notification_frequency import should_send_notification
 from impress.celery_app import app
 
 
@@ -49,12 +52,22 @@ def process_document_version(
         contributor_names,
     )
 
+    now = timezone.now()
+
     for configuration in configurations:
+        should_send = should_send_notification(
+            configuration.frequency,
+            configuration.last_sent_at,
+            now,
+        )
+
         logger.info(
             "Notification candidate "
-            "user_id=%s frequency=%s last_sent_at=%s destination=%s",
+            "user_id=%s frequency=%s last_sent_at=%s "
+            "destination=%s should_send=%s",
             configuration.user_id,
             configuration.frequency,
             configuration.last_sent_at,
             configuration.tchap_destination,
+            should_send,
         )
