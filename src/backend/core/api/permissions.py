@@ -13,6 +13,7 @@ ACTION_FOR_METHOD_TO_PERMISSION = {
     "versions_detail": {"DELETE": "versions_destroy", "GET": "versions_retrieve"},
     "children": {"GET": "children_list", "POST": "children_create"},
     "content": {"PATCH": "content_patch", "GET": "content_retrieve"},
+    "contributions": {"POST": "content_patch"},
 }
 
 

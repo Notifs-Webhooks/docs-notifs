@@ -38,6 +38,7 @@ from core.choices import (
     PRIVILEGED_ROLES,
     LinkReachChoices,
     LinkRoleChoices,
+    NotificationFrequencyChoices,
     RoleChoices,
     get_equivalent_link_definition,
 )
@@ -1576,6 +1577,31 @@ class Document(MP_Node, BaseModel):
                 numchild=models.F("numchild") + 1
             )
 
+class DocumentContribution(BaseModel):
+    """Record that a user has contributed to a document."""
+
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name="contributions",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="document_contributions",
+    )
+
+    class Meta:
+        db_table = "impress_document_contribution"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["document", "user"],
+                name="unique_document_contribution_user",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user!s} contributed to {self.document!s}"
 
 class LinkTrace(BaseModel):
     """
@@ -1638,6 +1664,51 @@ class DocumentFavorite(BaseModel):
 
     def __str__(self):
         return f"{self.user!s} favorite on document {self.document!s}"
+
+
+class NotificationSetting(BaseModel):
+    """Notification settings for a user tracking a document."""
+
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name="notification_settings",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="notification_settings",
+    )
+    enabled = models.BooleanField(default=True)
+    frequency = models.CharField(
+        max_length=20,
+        choices=NotificationFrequencyChoices.choices,
+        default=NotificationFrequencyChoices.IMMEDIATE,
+    )
+    last_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+    tchap_destination = models.CharField(
+        max_length=255,
+    )
+
+    class Meta:
+        db_table = "impress_notification_setting"
+        verbose_name = _("Notification setting")
+        verbose_name_plural = _("Notification settings")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "document"],
+                name="unique_notification_setting_user_document",
+                violation_error_message=_(
+                    "This user already has notification settings for this document."
+                ),
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user!s} notifications on document {self.document!s}"
 
 
 class DocumentAccess(BaseAccess):

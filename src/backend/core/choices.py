@@ -115,3 +115,11 @@ def get_equivalent_link_definition(ancestors_links):
         )
 
     return {"link_reach": max_reach, "link_role": max_role}
+
+class NotificationFrequencyChoices(TextChoices):
+    """Defines the available notification frequencies."""
+
+    IMMEDIATE = "immediate", _("Immediate")
+    HOURLY = "hourly", _("Hourly")
+    DAILY = "daily", _("Daily")
+    WEEKLY = "weekly", _("Weekly")
