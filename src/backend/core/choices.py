@@ -37,6 +37,15 @@ class LinkRoleChoices(PriorityTextChoices):
     EDITOR = "editor", _("Editor")  # Can read and edit
 
 
+class NotificationFrequencyChoices(TextChoices):
+    """Defines the available notification frequencies."""
+
+    IMMEDIATE = "immediate", _("Immediate")
+    HOURLY = "hourly", _("Hourly")
+    DAILY = "daily", _("Daily")
+    WEEKLY = "weekly", _("Weekly")
+
+
 class RoleChoices(PriorityTextChoices):
     """Defines the possible roles a user can have in a resource."""
 

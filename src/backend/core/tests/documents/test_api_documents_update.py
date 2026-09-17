@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
+from django.utils import timezone
 
 import pytest
 import responses
@@ -18,6 +19,72 @@ from core.api import serializers
 from core.tests.conftest import TEAM, USER, VIA
 
 pytestmark = pytest.mark.django_db
+
+
+def test_api_documents_update_notification_settings():
+    user = factories.UserFactory(with_owned_document=True)
+    document = factories.DocumentFactory(users=[(user, "owner")])
+    client = APIClient()
+    client.force_login(user)
+
+    response = client.patch(
+        f"/api/v1.0/documents/{document.id!s}/",
+        {
+            "notifications_enabled": True,
+            "notification_frequency": "daily",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["notifications_enabled"] is True
+    assert response.json()["notification_frequency"] == "daily"
+
+    document.refresh_from_db()
+    assert document.notifications_enabled is True
+    assert document.notification_frequency == "daily"
+
+
+def test_api_documents_update_rejects_invalid_notification_frequency():
+    user = factories.UserFactory(with_owned_document=True)
+    document = factories.DocumentFactory(users=[(user, "owner")])
+    client = APIClient()
+    client.force_login(user)
+
+    response = client.patch(
+        f"/api/v1.0/documents/{document.id!s}/",
+        {"notification_frequency": "monthly"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    document.refresh_from_db()
+    assert document.notification_frequency == "immediate"
+
+
+def test_api_documents_update_does_not_expose_or_modify_last_sent_at():
+    user = factories.UserFactory(with_owned_document=True)
+    document = factories.DocumentFactory(users=[(user, "owner")])
+    initial_last_sent_at = timezone.now()
+    models.Document.objects.filter(pk=document.pk).update(
+        notification_last_sent_at=initial_last_sent_at
+    )
+    client = APIClient()
+    client.force_login(user)
+
+    response = client.patch(
+        f"/api/v1.0/documents/{document.id!s}/",
+        {
+            "notification_last_sent_at": timezone.now(),
+            "notifications_enabled": True,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert "notification_last_sent_at" not in response.json()
+    document.refresh_from_db()
+    assert document.notification_last_sent_at == initial_last_sent_at
 
 
 @pytest.mark.parametrize("via_parent", [True, False])

@@ -38,6 +38,7 @@ from core.choices import (
     PRIVILEGED_ROLES,
     LinkReachChoices,
     LinkRoleChoices,
+    NotificationFrequencyChoices,
     RoleChoices,
     get_equivalent_link_definition,
 )
@@ -955,6 +956,13 @@ class Document(MP_Node, BaseModel):
     deleted_at = models.DateTimeField(null=True, blank=True)
     ancestors_deleted_at = models.DateTimeField(null=True, blank=True)
     has_deleted_children = models.BooleanField(default=False)
+    notifications_enabled = models.BooleanField(default=False)
+    notification_frequency = models.CharField(
+        max_length=20,
+        choices=NotificationFrequencyChoices.choices,
+        default=NotificationFrequencyChoices.IMMEDIATE,
+    )
+    notification_last_sent_at = models.DateTimeField(null=True, blank=True)
     duplicated_from = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
