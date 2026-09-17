@@ -101,3 +101,22 @@ class CollaborationService:
             f"Failed to get document connection info. Status code: {response.status_code}, "
             f"Response: {response.text}"
         )
+
+    def broadcast_document_version_boundary(self, room):
+        """Tell every browser in a document room that a version was saved."""
+        endpoint = "document-version-boundary"
+        endpoint_url = f"{settings.COLLABORATION_API_URL}{endpoint}/?room={room}"
+        headers = {"Authorization": settings.COLLABORATION_SERVER_SECRET}
+
+        try:
+            response = requests.post(endpoint_url, headers=headers, timeout=10)
+        except requests.RequestException as err:
+            raise requests.HTTPError(
+                "Failed to broadcast the document version boundary."
+            ) from err
+
+        if response.status_code != 200:
+            raise requests.HTTPError(
+                "Failed to broadcast the document version boundary. "
+                f"Status code: {response.status_code}, Response: {response.text}"
+            )
