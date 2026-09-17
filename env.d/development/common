@@ -84,6 +84,12 @@ DJANGO_SERVER_TO_SERVER_API_TOKENS=server-api-token
 Y_PROVIDER_API_BASE_URL=http://y-provider-development-converter:4444/api/
 Y_PROVIDER_API_KEY=yprovider-api-key
 
+# Tchap Notifier (local demonstration only)
+NOTIFIER_API_URL=http://notifier:8085
+NOTIFIER_API_TOKEN=local-demo-notifier-api-token-2026
+NOTIFIER_RECIPIENT=@bob:localhost
+NOTIFIER_REQUEST_TIMEOUT=10
+
 DOCSPEC_API_URL=http://docspec:3000/conversion
 
 # Theme customization

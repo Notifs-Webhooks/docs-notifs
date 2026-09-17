@@ -1,74 +1,24 @@
 import { Button, Modal, ModalSize } from '@gouvfr-lasuite/ui-components';
 import { announce } from '@react-aria/live-announcer';
-import { PropsWithChildren, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import styled, { createGlobalStyle, css } from 'styled-components';
 
 import { Box, ButtonCloseModal, HorizontalSeparator, Text } from '@/components';
 import { Doc } from '@/docs/doc-management';
 import { useResponsiveStore } from '@/stores';
-import { safeLocalStorage } from '@/utils/storages';
+
+import {
+  DigestFrequency,
+  DocNotificationSettings,
+  useDisableDocNotificationSettings,
+  useDocNotificationSettings,
+  useUpdateDocNotificationSettings,
+} from '../api';
 
 const NotifyModalStyle = createGlobalStyle`
   .--docs--doc-notify-modal .c__modal__title {
     padding-bottom: 0 !important;
-  }
-`;
-
-const CheckboxVisual = styled.span<{ $checked: boolean }>`
-  align-items: center;
-  background-color: ${({ $checked }) =>
-    $checked ? 'var(--c--theme--colors--primary-500, #000091)' : '#fff'};
-  border: 1.5px solid
-    ${({ $checked }) =>
-      $checked
-        ? 'var(--c--theme--colors--primary-500, #000091)'
-        : 'var(--c--theme--colors--greyscale-400, #929292)'};
-  border-radius: 4px;
-  display: inline-flex;
-  flex-shrink: 0;
-  height: 18px;
-  justify-content: center;
-  transition:
-    background-color 0.1s ease,
-    border-color 0.1s ease;
-  width: 18px;
-`;
-
-const CheckIcon = styled.svg`
-  fill: none;
-  height: 11px;
-  stroke: #fff;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2.5;
-  width: 11px;
-`;
-
-const CheckboxButton = styled.button<{ $align?: 'center' | 'flex-start' }>`
-  appearance: none;
-  align-items: ${({ $align }) => $align ?? 'center'};
-  background: transparent;
-  border: 0;
-  border-radius: 4px;
-  color: inherit;
-  cursor: pointer;
-  display: flex;
-  font: inherit;
-  gap: 8px;
-  margin: 0 -6px;
-  padding: 4px 6px;
-  text-align: left;
-  user-select: none;
-  width: 100%;
-
-  &:hover {
-    background-color: var(--c--theme--colors--greyscale-050, #f6f6f6);
-  }
-
-  &:focus-visible ${CheckboxVisual} {
-    outline: 2px solid var(--c--theme--colors--primary-500, #000091);
-    outline-offset: 2px;
   }
 `;
 
@@ -81,6 +31,7 @@ const SwitchButton = styled.button`
   cursor: pointer;
   display: inline-flex;
   margin: 0;
+  opacity: ${({ disabled }) => (disabled ? 0.55 : 1)};
   padding: 0;
   user-select: none;
 `;
@@ -138,179 +89,120 @@ const Select = styled.select`
   width: 100%;
 `;
 
-type Props = {
-  doc: Doc;
-  onClose: () => void;
-};
-
+type Props = { doc: Doc; onClose: () => void };
 type TabKey = 'activation' | 'settings';
-type Frequency = 'realtime' | 'daily' | 'weekly';
-type Channel = 'email' | 'app' | 'both';
 
-type NotificationSettings = {
-  enabled: boolean;
-  frequency: Frequency;
-  channel: Channel;
-  includeDocDetails: boolean;
-  includeDateTime: boolean;
-  includeModificationNature: boolean;
-  includeDocLink: boolean;
-  includeTchapTargets: boolean;
-  includeConfidentialityWarning: boolean;
+const DEFAULT_SETTINGS: DocNotificationSettings = {
+  enabled: false,
+  frequency: 'hourly',
+  last_sent_at: null,
+  subscription_status: 'disabled',
 };
-
-const DEFAULT_SETTINGS: NotificationSettings = {
-  enabled: true,
-  frequency: 'daily',
-  channel: 'email',
-  includeDocDetails: true,
-  includeDateTime: true,
-  includeModificationNature: true,
-  includeDocLink: true,
-  includeTchapTargets: true,
-  includeConfidentialityWarning: false,
-};
-
-const storageKey = (docId: string) => `docs-notification-settings:${docId}`;
-
-const isFrequency = (value: unknown): value is Frequency =>
-  value === 'realtime' || value === 'daily' || value === 'weekly';
-
-const isChannel = (value: unknown): value is Channel =>
-  value === 'email' || value === 'app' || value === 'both';
-
-const readBoolean = (value: unknown, fallback: boolean) =>
-  typeof value === 'boolean' ? value : fallback;
-
-const readSettings = (docId: string): NotificationSettings => {
-  const storedSettings = safeLocalStorage.getItem(storageKey(docId));
-  if (!storedSettings) {
-    return DEFAULT_SETTINGS;
-  }
-
-  try {
-    const value = JSON.parse(storedSettings) as Record<string, unknown>;
-    return {
-      enabled: readBoolean(value.enabled, DEFAULT_SETTINGS.enabled),
-      frequency: isFrequency(value.frequency)
-        ? value.frequency
-        : DEFAULT_SETTINGS.frequency,
-      channel: isChannel(value.channel)
-        ? value.channel
-        : DEFAULT_SETTINGS.channel,
-      includeDocDetails: readBoolean(
-        value.includeDocDetails,
-        DEFAULT_SETTINGS.includeDocDetails,
-      ),
-      includeDateTime: readBoolean(
-        value.includeDateTime,
-        DEFAULT_SETTINGS.includeDateTime,
-      ),
-      includeModificationNature: readBoolean(
-        value.includeModificationNature,
-        DEFAULT_SETTINGS.includeModificationNature,
-      ),
-      includeDocLink: readBoolean(
-        value.includeDocLink,
-        DEFAULT_SETTINGS.includeDocLink,
-      ),
-      includeTchapTargets: readBoolean(
-        value.includeTchapTargets,
-        DEFAULT_SETTINGS.includeTchapTargets,
-      ),
-      includeConfidentialityWarning: readBoolean(
-        value.includeConfidentialityWarning,
-        DEFAULT_SETTINGS.includeConfidentialityWarning,
-      ),
-    };
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
-};
-
-const CheckboxRow = ({
-  checked,
-  onChange,
-  align,
-  children,
-}: PropsWithChildren<{
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  align?: 'center' | 'flex-start';
-}>) => (
-  <CheckboxButton
-    type="button"
-    role="checkbox"
-    aria-checked={checked}
-    $align={align}
-    onClick={() => onChange(!checked)}
-  >
-    <CheckboxVisual $checked={checked} aria-hidden="true">
-      {checked && (
-        <CheckIcon viewBox="0 0 12 12">
-          <polyline points="1.5 6.5 4.5 9.5 10.5 2.5" />
-        </CheckIcon>
-      )}
-    </CheckboxVisual>
-    {children}
-  </CheckboxButton>
-);
-
-const Switch = ({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  label: string;
-}) => (
-  <SwitchButton
-    type="button"
-    role="switch"
-    aria-checked={checked}
-    aria-label={label}
-    onClick={() => onChange(!checked)}
-  >
-    <SwitchTrack $checked={checked} aria-hidden="true">
-      <SwitchThumb $checked={checked} />
-    </SwitchTrack>
-  </SwitchButton>
-);
 
 export const DocNotifyModal = ({ doc, onClose }: Props) => {
   const { t } = useTranslation();
   const { isLargeScreen } = useResponsiveStore();
   const [activeTab, setActiveTab] = useState<TabKey>('activation');
-  const [settings, setSettings] = useState<NotificationSettings>(() =>
-    readSettings(doc.id),
-  );
+  const [settings, setSettings] =
+    useState<DocNotificationSettings>(DEFAULT_SETTINGS);
+  const query = useDocNotificationSettings(doc.id);
+  const updateMutation = useUpdateDocNotificationSettings();
+  const disableMutation = useDisableDocNotificationSettings();
+  const isSaving = updateMutation.isPending || disableMutation.isPending;
 
-  const updateSetting = <Key extends keyof NotificationSettings>(
-    key: Key,
-    value: NotificationSettings[Key],
-  ) => {
-    setSettings((currentSettings) => ({
-      ...currentSettings,
-      [key]: value,
-    }));
-  };
+  useEffect(() => {
+    if (query.data) {
+      setSettings(query.data);
+    }
+  }, [query.data]);
 
-  const toggleNotifications = (enabled: boolean) => {
-    updateSetting('enabled', enabled);
-    announce(
-      enabled
-        ? t('Enabled notifications for this document.')
-        : t('Notifications disabled for this document.'),
-      'polite',
+  const enableNotifications = (frequency: DigestFrequency) => {
+    updateMutation.mutate(
+      { id: doc.id, frequency },
+      {
+        onSuccess: (data) => {
+          setSettings(data);
+          announce(
+            data.subscription_status === 'pending'
+              ? t('Tchap invitation sent. Accept it to receive digests.')
+              : t('Document notifications enabled.'),
+            'polite',
+          );
+        },
+        onError: () =>
+          announce(t('Failed to enable document notifications.'), 'assertive'),
+      },
     );
   };
 
-  const saveAndClose = () => {
-    safeLocalStorage.setItem(storageKey(doc.id), JSON.stringify(settings));
-    announce(t('Notification preferences saved locally.'), 'polite');
-    onClose();
+  const disableNotifications = () => {
+    disableMutation.mutate(
+      { id: doc.id },
+      {
+        onSuccess: (data) => {
+          setSettings(data);
+          announce(t('Document notifications disabled.'), 'polite');
+        },
+        onError: () =>
+          announce(t('Failed to disable document notifications.'), 'assertive'),
+      },
+    );
   };
+
+  const toggleNotifications = () => {
+    if (settings.enabled) {
+      disableNotifications();
+    } else {
+      enableNotifications(settings.frequency);
+    }
+  };
+
+  const updateFrequency = (frequency: DigestFrequency) => {
+    const previousFrequency = settings.frequency;
+    setSettings((current) => ({ ...current, frequency }));
+    updateMutation.mutate(
+      { id: doc.id, frequency },
+      {
+        onSuccess: setSettings,
+        onError: () => {
+          setSettings((current) => ({
+            ...current,
+            frequency: previousFrequency,
+          }));
+          announce(t('Failed to update digest frequency.'), 'assertive');
+        },
+      },
+    );
+  };
+
+  const statusMessage = (() => {
+    if (query.isLoading) {
+      return t('Loading notification settings…');
+    }
+    if (query.isError) {
+      return t('Notification settings could not be loaded.');
+    }
+    if (settings.subscription_status === 'pending') {
+      return t(
+        'An invitation was sent to @bob:localhost. Accept it in Tchap to receive digests.',
+      );
+    }
+    if (settings.subscription_status === 'active') {
+      return t('Tchap delivery is active for this document.');
+    }
+    if (settings.subscription_status === 'unavailable') {
+      return t('Tchap Notifier is currently unavailable.');
+    }
+    if (
+      settings.enabled &&
+      ['revoked', 'error', 'not_found'].includes(settings.subscription_status)
+    ) {
+      return t(
+        'Tchap authorization is no longer active. Disable and enable notifications to send a new invitation.',
+      );
+    }
+    return t('No digest is configured for this document.');
+  })();
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'activation', label: t('Notifications') },
@@ -331,14 +223,7 @@ export const DocNotifyModal = ({ doc, onClose }: Props) => {
       onClose={onClose}
       title={
         <Box $direction="row" $justify="space-between" $align="center">
-          <Text
-            as="h1"
-            id="doc-notify-modal-title"
-            $align="flex-start"
-            $size="small"
-            $weight="600"
-            $margin="0"
-          >
+          <Text as="h1" $size="small" $weight="600" $margin="0">
             {t('Notifications')}
           </Text>
           <ButtonCloseModal
@@ -364,10 +249,8 @@ export const DocNotifyModal = ({ doc, onClose }: Props) => {
           {tabs.map((tab) => (
             <TabButton
               key={tab.key}
-              id={`doc-notify-${tab.key}-tab`}
               type="button"
               role="tab"
-              aria-controls={`doc-notify-${tab.key}-panel`}
               aria-selected={activeTab === tab.key}
               $active={activeTab === tab.key}
               onClick={() => setActiveTab(tab.key)}
@@ -379,159 +262,81 @@ export const DocNotifyModal = ({ doc, onClose }: Props) => {
 
         <Box $padding={{ horizontal: 'base', vertical: 'base' }} $gap="1.25rem">
           {activeTab === 'activation' && (
-            <Box
-              id="doc-notify-activation-panel"
-              role="tabpanel"
-              aria-labelledby="doc-notify-activation-tab"
-              $direction="row"
-              $align="center"
-              $justify="space-between"
-              $padding={{ vertical: 'sm' }}
-            >
-              <Box $gap="4px">
-                <Text $weight="600" $size="sm">
-                  {t('Enable notifications')}
-                </Text>
-                <Text $variation="secondary" $size="xs">
-                  {t('Receive notifications for activity on this document.')}
-                </Text>
+            <Box $gap="0.75rem">
+              <Box
+                $direction="row"
+                $align="center"
+                $justify="space-between"
+                $padding={{ vertical: 'sm' }}
+              >
+                <Box $gap="4px">
+                  <Text $weight="600" $size="sm">
+                    {t('Enable notifications')}
+                  </Text>
+                  <Text $variation="secondary" $size="xs">
+                    {t('Receive Tchap digests when this document changes.')}
+                  </Text>
+                </Box>
+                <SwitchButton
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.enabled}
+                  aria-label={t('Enable notifications for this document')}
+                  disabled={query.isLoading || isSaving}
+                  onClick={toggleNotifications}
+                >
+                  <SwitchTrack $checked={settings.enabled} aria-hidden="true">
+                    <SwitchThumb $checked={settings.enabled} />
+                  </SwitchTrack>
+                </SwitchButton>
               </Box>
-              <Switch
-                checked={settings.enabled}
-                onChange={toggleNotifications}
-                label={t('Enable notifications for this document')}
-              />
+              <Text $variation="secondary" $size="xs" role="status">
+                {statusMessage}
+              </Text>
             </Box>
           )}
 
           {activeTab === 'settings' && (
-            <Box
-              id="doc-notify-settings-panel"
-              role="tabpanel"
-              aria-labelledby="doc-notify-settings-tab"
-              $gap="1.25rem"
-            >
+            <Box $gap="1.25rem">
               {!settings.enabled ? (
                 <Text $variation="secondary" $size="sm">
                   {t(
-                    'Notifications are currently disabled. Enable them in the Notifications tab to access settings.',
+                    'Enable notifications in the Notifications tab to configure the digest.',
                   )}
                 </Text>
               ) : (
                 <>
-                  <Box $gap="0.25rem">
-                    <Text
-                      $weight="600"
-                      $size="xs"
-                      $textTransform="uppercase"
-                      $variation="secondary"
-                    >
-                      {t('Notification content')}
-                    </Text>
-                    <CheckboxRow
-                      checked={settings.includeDocDetails}
-                      onChange={(checked) =>
-                        updateSetting('includeDocDetails', checked)
-                      }
-                    >
-                      <Text $size="sm">{t('ID and document name')}</Text>
-                    </CheckboxRow>
-                    <CheckboxRow
-                      checked={settings.includeDateTime}
-                      onChange={(checked) =>
-                        updateSetting('includeDateTime', checked)
-                      }
-                    >
-                      <Text $size="sm">{t('Date and time')}</Text>
-                    </CheckboxRow>
-                    <CheckboxRow
-                      checked={settings.includeModificationNature}
-                      onChange={(checked) =>
-                        updateSetting('includeModificationNature', checked)
-                      }
-                    >
-                      <Text $size="sm">{t('Nature of modification')}</Text>
-                    </CheckboxRow>
-                    <CheckboxRow
-                      checked={settings.includeDocLink}
-                      onChange={(checked) =>
-                        updateSetting('includeDocLink', checked)
-                      }
-                    >
-                      <Text $size="sm">{t('Link to document')}</Text>
-                    </CheckboxRow>
-                    <CheckboxRow
-                      checked={settings.includeTchapTargets}
-                      onChange={(checked) =>
-                        updateSetting('includeTchapTargets', checked)
-                      }
-                      align="flex-start"
-                    >
-                      <Box $gap="2px">
-                        <Text $size="sm">
-                          {t(
-                            'Specific recipient Tchap contacts and/or channels',
-                          )}
-                        </Text>
-                        <Text $variation="secondary" $size="xs">
-                          {t(
-                            'Limited to people who can access the document. The default destination is the Notifier conversation.',
-                          )}
-                        </Text>
-                      </Box>
-                    </CheckboxRow>
-                    <CheckboxRow
-                      checked={settings.includeConfidentialityWarning}
-                      onChange={(checked) =>
-                        updateSetting('includeConfidentialityWarning', checked)
-                      }
-                      align="flex-start"
-                    >
-                      <Text $size="sm">
-                        {t('Include a confidentiality warning for webhooks')}
-                      </Text>
-                    </CheckboxRow>
-                  </Box>
-
                   <Box $gap="0.35rem">
                     <label htmlFor="doc-notify-frequency">
                       <Text $size="sm" $weight="600">
-                        {t('Frequency')}
+                        {t('Digest frequency')}
                       </Text>
                     </label>
                     <Select
                       id="doc-notify-frequency"
                       value={settings.frequency}
+                      disabled={isSaving}
                       onChange={(event) =>
-                        updateSetting(
-                          'frequency',
-                          event.target.value as Frequency,
-                        )
+                        updateFrequency(event.target.value as DigestFrequency)
                       }
                     >
-                      <option value="realtime">{t('Instantaneous')}</option>
-                      <option value="daily">{t('Daily summary')}</option>
-                      <option value="weekly">{t('Weekly summary')}</option>
+                      <option value="hourly">{t('Hourly')}</option>
+                      <option value="weekly">{t('Weekly')}</option>
+                      <option value="monthly">{t('Monthly')}</option>
                     </Select>
                   </Box>
-
                   <Box $gap="0.35rem">
-                    <label htmlFor="doc-notify-channel">
-                      <Text $size="sm" $weight="600">
-                        {t('Notification channel')}
-                      </Text>
-                    </label>
-                    <Select
-                      id="doc-notify-channel"
-                      value={settings.channel}
-                      onChange={(event) =>
-                        updateSetting('channel', event.target.value as Channel)
-                      }
-                    >
-                      <option value="email">{t('Email only')}</option>
-                      <option value="app">{t('Tchap only')}</option>
-                      <option value="both">{t('Email and Tchap')}</option>
-                    </Select>
+                    <Text $size="sm" $weight="600">
+                      {t('Digest content')}
+                    </Text>
+                    <Text $variation="secondary" $size="xs">
+                      {t(
+                        'Each digest includes the document name, number of saved updates, contributors, covered period, and a link to the document.',
+                      )}
+                    </Text>
+                    <Text $variation="secondary" $size="xs">
+                      {t('Empty periods do not generate a message.')}
+                    </Text>
                   </Box>
                 </>
               )}
@@ -539,8 +344,8 @@ export const DocNotifyModal = ({ doc, onClose }: Props) => {
           )}
 
           <HorizontalSeparator $margin={{ vertical: 'xs' }} />
-          <Box $direction="row" $justify="flex-end" $gap="0.5rem">
-            <Button color="brand" onClick={saveAndClose}>
+          <Box $direction="row" $justify="flex-end">
+            <Button color="brand" onClick={onClose}>
               {t('Done')}
             </Button>
           </Box>

@@ -2,13 +2,18 @@
 
 import logging
 
+from django.conf import settings
 from django.utils import timezone
 
 from core import models
-from core.utils.notification_frequency import should_send_notification
-from core.utils.notification_message import format_notification_message
-from impress.celery_app import app
+from core.services.notifier import (
+    NotifierClient,
+    NotifierSubscriptionRequiredError,
+    NotifierUnavailableError,
+)
+from core.utils.notification_frequency import next_digest_at
 
+from impress.celery_app import app
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +25,7 @@ def process_document_version(
     saved_at,
     contributor_user_ids,
 ):
-    """Process a saved document version for notifications."""
+    """Log a saved version; periodic digest delivery reads persisted versions."""
 
     try:
         document = models.Document.objects.get(id=document_id)
@@ -31,61 +36,110 @@ def process_document_version(
         )
         return
 
-    contributors = models.User.objects.filter(id__in=contributor_user_ids)
-
-    contributor_names = [
-        user.full_name or user.short_name or str(user.id)
-        for user in contributors
-    ]
-
-    configurations = models.NotificationSetting.objects.filter(
-        document=document,
-        enabled=True,
-    ).select_related("user")
-
     logger.info(
-        "Processing document version "
+        "Document version ready for a future digest "
         "document_id=%s title=%s version_id=%s saved_at=%s contributors=%s",
         document.id,
         document.title,
         version_id,
         saved_at,
-        contributor_names,
+        contributor_user_ids,
     )
 
+
+def _user_display_name(user):
+    return user.full_name or user.short_name or user.email or str(user.id)
+
+
+def _dispatch_setting_digest(setting, now, *, force=False):
+    """Dispatch one due window and advance it only after a conclusive check."""
+
+    window_start = setting.last_checked_at or setting.created_at
+    window_end = now if force else next_digest_at(window_start, setting.frequency)
+    if window_end > now:
+        return "not_due"
+
+    versions = list(
+        models.DocumentVersion.objects.filter(
+            document=setting.document,
+            created_at__gt=window_start,
+            created_at__lte=window_end,
+        ).prefetch_related("contributors")
+    )
+
+    if not versions:
+        models.NotificationSetting.objects.filter(pk=setting.pk).update(
+            last_checked_at=window_end,
+        )
+        return "empty"
+
+    contributors = {
+        _user_display_name(contributor)
+        for version in versions
+        for contributor in version.contributors.all()
+    }
+    actor_name = (", ".join(sorted(contributors)) or "Unknown contributor")[:200]
+    document_base_url = (settings.LOGIN_REDIRECT_URL or "").rstrip("/")
+    document_url = (
+        f"{document_base_url}/docs/{setting.document_id}" if document_base_url else None
+    )
+
+    payload = {
+        "idempotency_key": f"digest:{setting.id}:{window_end.isoformat()}",
+        "actor_name": actor_name,
+        "document_id": str(setting.document_id),
+        "document_title": setting.document.title or "Untitled document",
+        "document_url": document_url,
+        "change_type": "updated",
+        "change_count": len(versions),
+        "period_start": window_start.isoformat(),
+        "period_end": window_end.isoformat(),
+        "occurred_at": window_end.isoformat(),
+    }
+
+    try:
+        NotifierClient().send_document_digest(payload)
+    except NotifierSubscriptionRequiredError:
+        models.NotificationSetting.objects.filter(pk=setting.pk).update(enabled=False)
+        logger.warning(
+            "Disabled document digest after the Tchap subscription was revoked: %s",
+            setting.pk,
+        )
+        return "disabled"
+    except NotifierUnavailableError:
+        logger.warning(
+            "Tchap Notifier is unavailable; digest window %s will be retried",
+            window_end,
+            exc_info=True,
+        )
+        return "unavailable"
+
+    models.NotificationSetting.objects.filter(pk=setting.pk).update(
+        last_checked_at=window_end,
+        last_sent_at=timezone.now(),
+    )
+    return "sent"
+
+
+@app.task
+def dispatch_due_notification_digests(force=False):
+    """Check enabled settings and optionally close their current window now."""
+
     now = timezone.now()
+    results = {
+        "sent": 0,
+        "empty": 0,
+        "not_due": 0,
+        "disabled": 0,
+        "unavailable": 0,
+    }
+    settings_to_check = models.NotificationSetting.objects.filter(
+        enabled=True,
+    ).select_related("document")
 
-    for configuration in configurations:
-        should_send = should_send_notification(
-            configuration.frequency,
-            configuration.last_sent_at,
-            now,
-        )
+    for setting in settings_to_check.iterator():
+        result = _dispatch_setting_digest(setting, now, force=force)
+        results[result] += 1
 
-        logger.info(
-            "Notification candidate "
-            "user_id=%s frequency=%s last_sent_at=%s "
-            "destination=%s should_send=%s",
-            configuration.user_id,
-            configuration.frequency,
-            configuration.last_sent_at,
-            configuration.tchap_destination,
-            should_send,
-        )
-
-        if not should_send:
-            continue
-
-        message = format_notification_message(
-            document.title,
-            contributor_names,
-            saved_at,
-        )
-
-        logger.info(
-            "Notification formatted "
-            "user_id=%s destination=%s message=%s",
-            configuration.user_id,
-            configuration.tchap_destination,
-            message,
-        )
+    logger.info("Document digest scan completed: force=%s results=%s", force, results)
+    return results

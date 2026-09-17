@@ -5,108 +5,115 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Doc } from '@/docs/doc-management';
 import { AppWrapper } from '@/tests/utils';
 
+import { DocNotificationSettings } from '../../api';
 import { DocNotifyModal } from '../DocNotifyModal';
 
-const doc = {
-  id: 'document-42',
-  title: 'Project roadmap',
-} as Doc;
+const updateSettings = vi.fn();
+const disableSettings = vi.fn();
+let backendSettings: DocNotificationSettings;
+
+vi.mock('../../api', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../api')>();
+  return {
+    ...original,
+    useDocNotificationSettings: () => ({
+      data: backendSettings,
+      isLoading: false,
+      isError: false,
+    }),
+    useUpdateDocNotificationSettings: () => ({
+      isPending: false,
+      mutate: updateSettings,
+    }),
+    useDisableDocNotificationSettings: () => ({
+      isPending: false,
+      mutate: disableSettings,
+    }),
+  };
+});
+
+const doc = { id: 'document-42', title: 'Project roadmap' } as Doc;
 
 describe('<DocNotifyModal />', () => {
   beforeEach(() => {
-    localStorage.clear();
+    backendSettings = {
+      enabled: false,
+      frequency: 'hourly',
+      last_sent_at: null,
+      subscription_status: 'disabled',
+    };
+    updateSettings.mockReset();
+    disableSettings.mockReset();
+    updateSettings.mockImplementation((_variables, options) => {
+      options.onSuccess({
+        ...backendSettings,
+        enabled: true,
+        subscription_status: 'pending',
+      });
+    });
+    disableSettings.mockImplementation((_variables, options) => {
+      options.onSuccess(backendSettings);
+    });
   });
 
-  it('updates every form control and saves the choices locally', async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
-    const { unmount } = render(<DocNotifyModal doc={doc} onClose={onClose} />, {
-      wrapper: AppWrapper,
-    });
-
-    await user.click(screen.getByRole('tab', { name: 'Settings' }));
-
-    const documentDetails = screen.getByRole('checkbox', {
-      name: 'ID and document name',
-    });
-    const confidentialityWarning = screen.getByRole('checkbox', {
-      name: 'Include a confidentiality warning for webhooks',
-    });
-
-    expect(documentDetails).toBeChecked();
-    expect(confidentialityWarning).not.toBeChecked();
-
-    await user.click(screen.getByText('Date and time'));
-    expect(
-      screen.getByRole('checkbox', { name: 'Date and time' }),
-    ).not.toBeChecked();
-
-    const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(6);
-    for (const checkbox of checkboxes) {
-      await user.click(checkbox);
-    }
-
-    expect(
-      screen.getByRole('checkbox', { name: 'Date and time' }),
-    ).toBeChecked();
-
-    expect(documentDetails).not.toBeChecked();
-    expect(confidentialityWarning).toBeChecked();
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Frequency' }),
-      'weekly',
-    );
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Notification channel' }),
-      'both',
-    );
-    await user.click(screen.getByRole('button', { name: 'Done' }));
-
-    expect(onClose).toHaveBeenCalledOnce();
-    unmount();
-
-    render(<DocNotifyModal doc={doc} onClose={vi.fn()} />, {
-      wrapper: AppWrapper,
-    });
-    await user.click(screen.getByRole('tab', { name: 'Settings' }));
-
-    expect(
-      screen.getByRole('checkbox', { name: 'ID and document name' }),
-    ).not.toBeChecked();
-    expect(
-      screen.getByRole('checkbox', {
-        name: 'Include a confidentiality warning for webhooks',
-      }),
-    ).toBeChecked();
-    expect(screen.getByRole('combobox', { name: 'Frequency' })).toHaveValue(
-      'weekly',
-    );
-    expect(
-      screen.getByRole('combobox', { name: 'Notification channel' }),
-    ).toHaveValue('both');
-  });
-
-  it('hides the detailed settings when notifications are disabled', async () => {
+  it('enables and disables the backend subscription from the switch', async () => {
     const user = userEvent.setup();
     render(<DocNotifyModal doc={doc} onClose={vi.fn()} />, {
       wrapper: AppWrapper,
     });
 
-    const activationSwitch = screen.getByRole('switch', {
+    const toggle = screen.getByRole('switch', {
       name: 'Enable notifications for this document',
     });
-    expect(activationSwitch).toBeChecked();
+    expect(toggle).not.toBeChecked();
 
-    await user.click(activationSwitch);
-    expect(activationSwitch).not.toBeChecked();
-    await user.click(screen.getByRole('tab', { name: 'Settings' }));
-
+    await user.click(toggle);
+    expect(updateSettings).toHaveBeenCalledWith(
+      { id: doc.id, frequency: 'hourly' },
+      expect.any(Object),
+    );
+    expect(toggle).toBeChecked();
     expect(
-      screen.getByText(
-        'Notifications are currently disabled. Enable them in the Notifications tab to access settings.',
-      ),
+      screen.getByText(/invitation was sent to @bob:localhost/i),
     ).toBeVisible();
+
+    await user.click(toggle);
+    expect(disableSettings).toHaveBeenCalledWith(
+      { id: doc.id },
+      expect.any(Object),
+    );
+    expect(toggle).not.toBeChecked();
+  });
+
+  it('only exposes supported digest settings', async () => {
+    backendSettings = {
+      enabled: true,
+      frequency: 'weekly',
+      last_sent_at: null,
+      subscription_status: 'active',
+    };
+    const user = userEvent.setup();
+    render(<DocNotifyModal doc={doc} onClose={vi.fn()} />, {
+      wrapper: AppWrapper,
+    });
+
+    await user.click(screen.getByRole('tab', { name: 'Settings' }));
+    const frequency = screen.getByRole('combobox', {
+      name: 'Digest frequency',
+    });
+    expect(frequency).toHaveValue('weekly');
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+    expect(screen.queryByText('Instantaneous')).not.toBeInTheDocument();
+    expect(screen.queryByText('Email only')).not.toBeInTheDocument();
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+
+    await user.selectOptions(frequency, 'monthly');
+    expect(updateSettings).toHaveBeenCalledWith(
+      { id: doc.id, frequency: 'monthly' },
+      expect.any(Object),
+    );
+    expect(
+      screen.getByText(/document name, number of saved updates, contributors/i),
+    ).toBeVisible();
   });
 });

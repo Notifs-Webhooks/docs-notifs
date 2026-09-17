@@ -65,6 +65,7 @@ from core.services.converter_services import (
 from core.services.converter_services import (
     ValidationError as YProviderValidationError,
 )
+from core.services.notifier import NotifierClient, NotifierUnavailableError
 from core.services.search_indexers import (
     get_document_indexer,
     get_visited_document_ids_of,
@@ -2107,6 +2108,111 @@ class DocumentViewSet(
                 "updated_at": contribution.updated_at,
             },
             status=response_status,
+        )
+
+    @drf.decorators.action(
+        detail=True,
+        methods=["get", "put", "delete"],
+        url_path="notification-settings",
+        permission_classes=[
+            permissions.IsAuthenticated,
+            permissions.DocumentPermission,
+        ],
+    )
+    def notification_settings(self, request, *args, **kwargs):
+        """Read or update the current user's Tchap digest for this document."""
+
+        document = self.get_object()
+        setting = models.NotificationSetting.objects.filter(
+            document=document,
+            user=request.user,
+        ).first()
+
+        if request.method == "GET":
+            if setting is None or not setting.enabled:
+                return drf_response.Response(
+                    {
+                        "enabled": False,
+                        "frequency": setting.frequency if setting else "hourly",
+                        "last_sent_at": setting.last_sent_at if setting else None,
+                        "subscription_status": "disabled",
+                    }
+                )
+
+            try:
+                subscription = NotifierClient().get_subscription()
+            except NotifierUnavailableError:
+                subscription_status = "unavailable"
+            else:
+                subscription_status = (
+                    subscription["status"] if subscription else "not_found"
+                )
+
+            return drf_response.Response(
+                {
+                    "enabled": setting.enabled,
+                    "frequency": setting.frequency,
+                    "last_sent_at": setting.last_sent_at,
+                    "subscription_status": subscription_status,
+                }
+            )
+
+        if request.method == "PUT":
+            serializer = serializers.NotificationSettingSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            frequency = serializer.validated_data["frequency"]
+
+            try:
+                subscription = NotifierClient().subscribe()
+            except NotifierUnavailableError:
+                return drf_response.Response(
+                    {"detail": "Tchap Notifier is currently unavailable."},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+
+            reset_digest_window = (
+                setting is None or not setting.enabled or setting.frequency != frequency
+            )
+            setting, _ = models.NotificationSetting.objects.update_or_create(
+                document=document,
+                user=request.user,
+                defaults={
+                    "enabled": True,
+                    "frequency": frequency,
+                    **(
+                        {"last_checked_at": timezone.now()}
+                        if reset_digest_window
+                        else {}
+                    ),
+                },
+            )
+            return drf_response.Response(
+                {
+                    "enabled": True,
+                    "frequency": setting.frequency,
+                    "last_sent_at": setting.last_sent_at,
+                    "subscription_status": subscription["status"],
+                }
+            )
+
+        if setting is not None:
+            setting.enabled = False
+            setting.save(update_fields=["enabled", "updated_at"])
+
+        subscription_status = "disabled"
+        if not models.NotificationSetting.objects.filter(enabled=True).exists():
+            try:
+                NotifierClient().unsubscribe()
+            except NotifierUnavailableError:
+                subscription_status = "unavailable"
+
+        return drf_response.Response(
+            {
+                "enabled": False,
+                "frequency": setting.frequency if setting else "hourly",
+                "last_sent_at": setting.last_sent_at if setting else None,
+                "subscription_status": subscription_status,
+            }
         )
 
     @drf.decorators.action(detail=True, methods=["patch"])

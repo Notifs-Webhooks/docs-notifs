@@ -115,6 +115,35 @@ services:
     depends_on:
       - app-dev
 
+  celery-beat-dev:
+    user: ${DOCKER_USER:-1000}
+    image: impress:backend-development
+    command:
+      [
+        "celery",
+        "-A",
+        "impress.celery_app",
+        "beat",
+        "-l",
+        "INFO",
+        "--schedule=/tmp/celerybeat-schedule",
+      ]
+    environment:
+      - DJANGO_CONFIGURATION=Development
+    networks:
+      - default
+      - lasuite
+    env_file:
+      - env.d/development/common
+      - env.d/development/common.local
+      - env.d/development/postgresql
+      - env.d/development/postgresql.local
+    volumes:
+      - ./src/backend:/app
+      - /app/.venv
+    depends_on:
+      - app-dev
+
   nginx:
     image: nginx:1.25
     ports:

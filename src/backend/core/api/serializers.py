@@ -77,6 +77,15 @@ class UserLightSerializer(UserSerializer):
         read_only_fields = ["full_name", "short_name"]
 
 
+class NotificationSettingSerializer(serializers.ModelSerializer):
+    """Validate the document digest settings exposed to the current user."""
+
+    class Meta:
+        model = models.NotificationSetting
+        fields = ["enabled", "frequency", "last_sent_at"]
+        read_only_fields = ["enabled", "last_sent_at"]
+
+
 class ListDocumentSerializer(serializers.ModelSerializer):
     """Serialize documents with limited fields for display in lists."""
 
