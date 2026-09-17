@@ -606,6 +606,26 @@ class Base(Configuration):
     # Celery
     CELERY_BROKER_URL = values.Value("redis://redis:6379/0")
     CELERY_BROKER_TRANSPORT_OPTIONS = values.DictValue({})
+    CELERY_BEAT_SCHEDULE = {
+        "dispatch-document-notification-digests": {
+            "task": "core.tasks.notifications.dispatch_due_notification_digests",
+            "schedule": 60.0,
+        },
+    }
+
+    # Tchap Notifier integration
+    NOTIFIER_API_URL = values.Value(
+        None, environ_name="NOTIFIER_API_URL", environ_prefix=None
+    )
+    NOTIFIER_API_TOKEN = SecretFileValue(
+        None, environ_name="NOTIFIER_API_TOKEN", environ_prefix=None
+    )
+    NOTIFIER_RECIPIENT = values.Value(
+        "@bob:localhost", environ_name="NOTIFIER_RECIPIENT", environ_prefix=None
+    )
+    NOTIFIER_REQUEST_TIMEOUT = values.PositiveIntegerValue(
+        10, environ_name="NOTIFIER_REQUEST_TIMEOUT", environ_prefix=None
+    )
 
     # Session
     SESSION_ENGINE = "django.contrib.sessions.backends.cache"

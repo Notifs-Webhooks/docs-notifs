@@ -1,3 +1,136 @@
+# Tchap document notification prototype
+
+This fork adds opt-in Tchap digests for collaborative document updates. It is
+designed for the local demonstration environment composed of three sibling
+repositories:
+
+- `docs-notifs`: the Docs frontend, API, version tracking, and digest scheduler;
+- `tchap-notification-bot`: the authenticated Notifier API and encrypted Matrix
+  delivery worker;
+- `tchap-web-notifs`: the local Tchap client and Synapse server.
+
+The demonstration deliberately routes every Tchap subscription and delivery to
+`@bob:localhost`. The browser never receives the Notifier bearer token.
+
+For the full implementation rationale, API contracts, data flow, failure
+handling, and extension points, see
+[`NOTIFICATION_SYSTEM.md`](./NOTIFICATION_SYSTEM.md).
+
+## How notifications work
+
+1. An authenticated user opens **Notify changes** from a document menu.
+2. Enabling notifications calls the Docs backend. Docs stores one setting for
+   that user and document, then asks Notifier to create or reuse Bob's private
+   encrypted conversation.
+3. Bob accepts the invitation in Tchap. Until then, Notifier safely retains
+   generated deliveries in the `awaiting_recipient` state.
+4. Editors are recorded while they work. Each actual object-storage save creates
+   a `DocumentVersion` associated with its contributors.
+5. A single Celery Beat scheduler checks digest windows every minute. Supported
+   windows are hourly, weekly, and monthly; there is no automatic instantaneous
+   delivery.
+6. When a completed window contains saved versions, Docs sends one idempotent
+   digest to Notifier. Empty windows produce no message.
+7. The digest contains the document name, number of saved updates,
+   contributors, covered period, and a link to the document.
+8. Disabling one document only disables that document. Docs asks Notifier to
+   leave the global conversation only after every document subscription has
+   been disabled.
+
+Each monthly window advances one calendar month from the previous boundary.
+Dates that do not exist in the following month are clamped to that month's last
+day.
+
+```text
+Docs browser
+    │ authenticated Docs API request
+    ▼
+Docs backend ── stores settings, versions, and contributors
+    │                    │
+    │                    └── Celery Beat checks completed digest windows
+    │
+    │ Bearer token on the private Docker network
+    ▼
+Notifier API ── SQLite delivery queue ── encrypted Matrix DM ── @bob:localhost
+```
+
+## Run the complete local stack
+
+The repositories must be siblings under the same parent directory. First
+bootstrap Docs; this also creates the shared `lasuite-network` Docker network:
+
+```bash
+cd docs-notifs
+make bootstrap
+```
+
+Start the local Tchap/Synapse environment:
+
+```bash
+cd ../tchap-web-notifs
+TCHAP_PUBLIC_HOST=127.0.0.1 ./run-tchap.sh
+```
+
+Configure and start Notifier as described in
+`../tchap-notification-bot/README.md`, then run:
+
+```bash
+cd ../tchap-notification-bot
+bash ./run.sh start
+```
+
+The Compose setup uses the development-only token
+`local-demo-notifier-api-token-2026` in both Docs and Notifier. Override
+`NOTIFIER_API_TOKEN` in both services outside this local demonstration.
+
+Finally start Docs, including its Celery worker and the single digest scheduler:
+
+```bash
+cd ../docs-notifs
+./run-docs-lan.sh start
+```
+
+For an existing checkout that was bootstrapped before the notification feature
+was pulled, apply its new database migrations once before opening the UI:
+
+```bash
+make migrate
+```
+
+Open Docs at `http://127.0.0.1:3000`, enable a digest on a document, then sign
+in to Tchap as Bob and accept the Notifier invitation. The local Tchap account
+credentials are documented in `../tchap-web-notifs/README.md`.
+
+For a quick demonstration after editing and waiting for Docs to save the
+document, close every active digest window immediately:
+
+```bash
+./run-docs-lan.sh send
+```
+
+`send` ignores the configured waiting period, but it does not bypass consent or
+the per-document enable switch. It sends one recap only for enabled documents
+with saved changes since their previous check; empty windows remain silent.
+
+The local MinIO bucket has versioning enabled. Any other S3-compatible storage
+used with this feature must also return a version identifier for saved objects.
+
+## Notification configuration
+
+Docs backend environment variables:
+
+| Variable | Local value | Purpose |
+| --- | --- | --- |
+| `NOTIFIER_API_URL` | `http://notifier:8085` | Private Notifier API URL |
+| `NOTIFIER_API_TOKEN` | development token | Server-to-server bearer token |
+| `NOTIFIER_RECIPIENT` | `@bob:localhost` | Forced demonstration recipient |
+| `NOTIFIER_REQUEST_TIMEOUT` | `10` | HTTP timeout in seconds |
+
+Only one Celery Beat scheduler may run for an environment. The regular Celery
+worker performs delivery checks; Beat only schedules them.
+
+---
+
 ## Quick start (LAN)
 
 **Setup**

@@ -14,6 +14,11 @@ ACTION_FOR_METHOD_TO_PERMISSION = {
     "children": {"GET": "children_list", "POST": "children_create"},
     "content": {"PATCH": "content_patch", "GET": "content_retrieve"},
     "contributions": {"POST": "content_patch"},
+    "notification_settings": {
+        "GET": "content_retrieve",
+        "PUT": "content_retrieve",
+        "DELETE": "content_retrieve",
+    },
 }
 
 

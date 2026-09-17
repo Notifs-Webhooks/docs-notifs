@@ -1729,14 +1729,15 @@ class NotificationSetting(BaseModel):
     frequency = models.CharField(
         max_length=20,
         choices=NotificationFrequencyChoices.choices,
-        default=NotificationFrequencyChoices.IMMEDIATE,
+        default=NotificationFrequencyChoices.HOURLY,
+    )
+    last_checked_at = models.DateTimeField(
+        null=True,
+        blank=True,
     )
     last_sent_at = models.DateTimeField(
         null=True,
         blank=True,
-    )
-    tchap_destination = models.CharField(
-        max_length=255,
     )
 
     class Meta:
