@@ -1,0 +1,13 @@
+apiVersion: v1
+entries:
+  docs:
+  - apiVersion: v2
+    appVersion: latest
+    created: "2026-09-17T07:54:32.100016983Z"
+    digest: 0abe23c957e3ac80b715105714efb8ae40199390d39718e1725e61b5427e6d57
+    name: docs
+    type: application
+    urls:
+    - https://Notifs-Webhooks.github.io/docs-notifs/docs-5.7.0.tgz
+    version: 5.7.0
+generated: "2026-09-17T07:54:32.0979241Z"
